@@ -21,6 +21,8 @@ import           Spago.Prelude
 import qualified Data.Set             as Set
 import qualified Data.Text            as Text
 import qualified System.FilePath.Glob as Glob
+import qualified Turtle
+import           Turtle               ((%))
 
 import qualified Spago.Config         as Config
 import qualified Spago.Packages       as Packages
@@ -37,6 +39,9 @@ data NoBuild = NoBuild | DoBuild
 data BuildOptions = BuildOptions
   { maybeLimit      :: Maybe Int
   , shouldWatch     :: Watch
+  , runBefore       :: Maybe Text
+  , runThen         :: Maybe Text
+  , runElse         :: Maybe Text
   , sourcePaths     :: [Purs.SourcePath]
   , passthroughArgs :: [Purs.ExtraArg]
   }
@@ -60,13 +65,13 @@ prepareBundleDefaults maybeModuleName maybeTargetPath = (moduleName, targetPath)
 -- | Build the project with purs, passing through additional args and
 --   eventually running some other action after the build
 build :: Spago m => BuildOptions -> Maybe (m ()) -> m ()
-build BuildOptions{..} maybePostBuild = do
+build buildOpts@BuildOptions{..} maybePostBuild = do
   config <- Config.ensureConfig
   deps <- Packages.getProjectDeps config
   Packages.fetchPackages maybeLimit deps
   let projectGlobs = defaultSourcePaths <> sourcePaths
       allGlobs = Packages.getGlobs deps <> projectGlobs
-      buildAction = do
+      buildAction = runBeforeThenElse buildOpts $ do
         Purs.compile allGlobs passthroughArgs
         case maybePostBuild of
           Just action -> action
@@ -128,7 +133,7 @@ bundle withMain maybeModuleName maybeTargetPath noBuild buildOpts =
       bundleAction = Purs.bundle withMain moduleName targetPath
   in case noBuild of
     DoBuild -> build buildOpts (Just bundleAction)
-    NoBuild -> bundleAction
+    NoBuild -> runBeforeThenElse buildOpts bundleAction
 
 -- | Bundle into a CommonJS module
 makeModule
@@ -153,12 +158,33 @@ makeModule maybeModuleName maybeTargetPath noBuild buildOpts = do
             Left (n :: SomeException) -> die $ "Make module failed: " <> repr n
   case noBuild of
     DoBuild -> build buildOpts (Just bundleAction)
-    NoBuild -> bundleAction
+    NoBuild -> runBeforeThenElse buildOpts bundleAction
 
 -- | Generate docs for the `sourcePaths`
-docs :: Spago m => [Purs.SourcePath] -> m ()
-docs sourcePaths = do
+docs :: Spago m => [Purs.SourcePath] -> BuildOptions -> m ()
+docs sourcePaths buildOpts = do
   config <- Config.ensureConfig
   deps <- Packages.getProjectDeps config
   echo "Generating documentation for the project. This might take a while.."
-  Purs.docs $ defaultSourcePaths <> Packages.getGlobs deps <> sourcePaths
+  runBeforeThenElse buildOpts $
+    Purs.docs $ defaultSourcePaths <> Packages.getGlobs deps <> sourcePaths
+
+
+runBeforeThenElse :: Spago m => BuildOptions -> m () -> m ()
+runBeforeThenElse BuildOptions{..} action = do
+  for_ runBefore runCmd
+  catchAll action $ \err -> do
+    for_ runElse runCmd
+    throwM err
+  for_ runThen runCmd
+  where
+    runCmd command = do
+      echo $ "running: `" <> command <> "`"
+      liftIO $ shell command empty >>=
+        \case
+          ExitSuccess -> pure ()
+          ExitFailure failure -> die $ Turtle.format
+            ("`"%s%"` failed with exit code: "%d% " - exiting.\n")
+            command failure
+    s = Turtle.s
+    d = Turtle.d

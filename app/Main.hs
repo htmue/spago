@@ -36,7 +36,7 @@ data Command
   | Repl [SourcePath] [ExtraArg]
 
   -- | Generate documentation for the project and its dependencies
-  | Docs [SourcePath]
+  | Docs [SourcePath] BuildOptions
 
   -- | Build the project paths src/ and test/ plus the specified source paths
   | Build BuildOptions
@@ -121,8 +121,11 @@ parser = do
     sourcePaths = CLI.many (CLI.opt (Just . SourcePath) "path" 'p' "Source path to include")
     packageName = CLI.arg (Just . PackageName) "package" "Specify a package name. You can list them with `list-packages`"
     packageNames = CLI.many $ CLI.arg (Just . PackageName) "package" "Package name to add as dependency"
+    runBefore   = CLI.optional (CLI.optText "before" 'B' "Run a shell command before the operation begins. Useful with `--watch`, eg. `--watch --before clear`.")
+    runThen     = CLI.optional (CLI.optText "then" 'T' "Run a shell command after the operation finishes successfully. Useful with `--watch`, eg. `--watch --then 'say Done'`")
+    runElse     = CLI.optional (CLI.optText "else" 'E' "Run a shell command if an operation failed. Useful with `--watch`, eg. `--watch --then 'say Done' --else 'say Failed'`")
     passthroughArgs = many $ CLI.arg (Just . ExtraArg) " ..any `purs compile` option" "Options passed through to `purs compile`; use -- to separate"
-    buildOptions = BuildOptions <$> limitJobs <*> watch <*> sourcePaths <*> passthroughArgs
+    buildOptions = BuildOptions <$> limitJobs <*> watch <*> runBefore <*> runThen <*> runElse <*> sourcePaths <*> passthroughArgs
     globalOptions = GlobalOptions <$> verbose
     packagesFilter =
       let wrap = \case
@@ -187,7 +190,7 @@ parser = do
     docs =
       ( "docs"
       , "Generate docs for the project and its dependencies"
-      , Docs <$> sourcePaths
+      , Docs <$> sourcePaths <*> buildOptions
       )
 
 
@@ -311,7 +314,7 @@ main = do
         -> Spago.Build.bundle WithMain modName tPath shouldBuild buildOptions
       MakeModule modName tPath shouldBuild buildOptions
         -> Spago.Build.makeModule modName tPath shouldBuild buildOptions
-      Docs sourcePaths                      -> Spago.Build.docs sourcePaths
+      Docs sourcePaths buildOptions         -> Spago.Build.docs sourcePaths buildOptions
       Version                               -> printVersion
       PscPackageLocalSetup force            -> liftIO $ PscPackage.localSetup force
       PscPackageInsDhall                    -> liftIO $ PscPackage.insDhall
