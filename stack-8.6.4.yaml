@@ -1,0 +1,11 @@
+resolver: lts-13.14
+packages:
+- .
+extra-deps:
+- dhall-1.21.0@sha256:ff0590b9453e33b5a319fdea0f5457cc17934efea943e2cafa0021d61f93e9a5
+- dhall-json-1.2.7@sha256:f019d5fdced7b523559cfd87b79a62bb35fe3530b2772946ca7d6b0d0d03d51b
+- git: https://github.com/jwiegley/async-pool
+  commit: edec25439593093331c89090951399ccdd400124
+- Win32-2.5.4.1@sha256:e623a1058bd8134ec14d62759f76cac52eee3576711cb2c4981f398f1ec44b85
+- Glob-0.10.0@sha256:6ecdfb044f2fb9c3b3716c2093e5da0eeea2cd0f6aebac5cdf40979c038e836f
+- github-0.21@sha256:9d88c84e308723e314069f91c70c0f3fdad6d18976f185f1ae672ce8eee30547
